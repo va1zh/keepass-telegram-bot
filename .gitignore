@@ -1,0 +1,6 @@
+.env
+Database.kdbx
+*.kdbx
+__pycache__/
+*.pyc
+data/
