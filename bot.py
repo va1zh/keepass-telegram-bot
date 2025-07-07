@@ -3,7 +3,6 @@
 
 import logging
 import os
-import tempfile
 from functools import wraps
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, Filters, CallbackQueryHandler
