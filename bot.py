@@ -9,6 +9,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandle
 from pykeepass import PyKeePass
 from dotenv import load_dotenv
 from yadisk import YaDisk
+import re
 
 # Load environment variables from .env
 load_dotenv()
@@ -83,8 +84,63 @@ def help_command(update: Update, context: CallbackContext):
 def handle_query(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
-    if query.data == 'senddb':
+    data = query.data
+
+    if data == 'senddb':
         query.message.reply_document(open(KDBX_PATH, 'rb'))
+    elif data.startswith('entry:'):
+        index = int(data.split(':')[1])
+        results = context.user_data.get('search_results', [])
+        if 0 <= index < len(results):
+            e = results[index]
+            msg = f"🔐 <b>{e.title}</b>"
+            if e.username:
+                msg += f"👤 <code>{e.username}</code>"
+            if e.password:
+                msg += f"🔑 <code>{e.password}</code>"
+            if e.notes:
+                msg += f"📝 {e.notes}"
+            query.message.reply_html(msg)
+    elif data.startswith('delete:'):
+        index = int(data.split(':')[1])
+        results = context.user_data.get('delete_candidates', [])
+        if 0 <= index < len(results):
+            try:
+                entry = results[index]
+
+                # Загрузить свежую базу
+                download_kdbx_from_yandex()
+                kp = PyKeePass(KDBX_PATH, password=MASTER_PASSWORD)
+
+                # Найти и удалить запись по UUID
+                fresh_entry = kp.find_entries(uuid=entry.uuid, first=True)
+                if fresh_entry:
+                    kp.delete_entry(fresh_entry)
+                    kp.save()
+                    upload_kdbx_to_yandex()
+                    query.message.reply_text(f"🗑️ Удалена запись: {entry.title}")
+                else:
+                    query.message.reply_text("❌ Запись уже удалена или не найдена.")
+
+                # Очистить список
+                context.user_data['delete_candidates'] = []
+
+            except Exception as e:
+                query.message.reply_text(f"❌ Ошибка удаления: {e}")
+
+    elif data.startswith('entry:'):
+        index = int(data.split(':')[1])
+        results = context.user_data.get('search_results', [])
+        if 0 <= index < len(results):
+            e = results[index]
+            msg = f"🔐 <b>{e.title}</b>"
+            if e.username:
+                msg += f"👤 <code>{e.username}</code>"
+            if e.password:
+                msg += f"🔑 <code>{e.password}</code>"
+            if e.notes:
+                msg += f"📝 {e.notes}"
+            query.message.reply_html(msg)
 
 @restricted
 def handle_text(update: Update, context: CallbackContext):
@@ -116,38 +172,43 @@ def handle_text(update: Update, context: CallbackContext):
             term = text.lower()
             download_kdbx_from_yandex()
             kp = PyKeePass(KDBX_PATH, password=MASTER_PASSWORD)
-            matches = [e for e in kp.entries if e.title and term in e.title.lower()]
-            if not matches:
+            results = [e for e in kp.entries if e.title and term in e.title.lower()]
+
+            if not results:
                 update.message.reply_text("Ничего не найдено для удаления.")
             else:
-                entry = matches[0]
-                kp.delete_entry(entry)
-                kp.save()
-                upload_kdbx_to_yandex()
-                update.message.reply_text(f"🗑️ Удалена запись: {entry.title}")
+                keyboard = [[InlineKeyboardButton(e.title, callback_data=f"delete:{i}")] for i, e in enumerate(results)]
+                context.user_data['delete_candidates'] = results
+                update.message.reply_text(
+                    f"🗑️ Найдено {len(results)} записей. Выберите запись для удаления:",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
         except Exception as e:
-            update.message.reply_text(f"❌ Ошибка удаления: {e}")
+            update.message.reply_text(f"❌ Ошибка поиска для удаления: {e}")
         context.user_data['awaiting_delete'] = False
     else:
         try:
-            term = text.lower()
+            term = re.sub(r"[^\w]", "", text.lower())  # убрать все не-буквенно-цифровые символы
             download_kdbx_from_yandex()
             kp = PyKeePass(KDBX_PATH, password=MASTER_PASSWORD)
-            results = [e for e in kp.entries if (e.title and term in e.title.lower()) or
-                       (e.username and term in e.username.lower()) or
-                       (e.notes and term in e.notes.lower())]
+
+            results = []
+            for e in kp.entries:
+                fields = [e.title, e.username, e.notes]
+                for field in fields:
+                    if field and term in re.sub(r"[^\w]", "", field.lower()):
+                        results.append(e)
+                        break
+
             if not results:
                 update.message.reply_text("Ничего не найдено.")
             else:
-                for e in results[:5]:
-                    msg = f"🔐 <b>{e.title}</b>"
-                    if e.username:
-                        msg += f"\n👤 <code>{e.username}</code>"
-                    if e.password:
-                        msg += f"\n🔑 <code>{e.password}</code>"
-                    if e.notes:
-                        msg += f"\n📝 {e.notes}"
-                    update.message.reply_html(msg)
+                keyboard = [[InlineKeyboardButton(e.title, callback_data=f"entry:{i}")] for i, e in enumerate(results)]
+                context.user_data['search_results'] = results
+                update.message.reply_text(
+                    f"🔎 Найдено {len(results)} записей:",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
         except Exception as e:
             update.message.reply_text(f"❌ Ошибка поиска: {e}")
 
