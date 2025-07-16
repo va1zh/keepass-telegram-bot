@@ -172,7 +172,13 @@ def handle_text(update: Update, context: CallbackContext):
             term = text.lower()
             download_kdbx_from_yandex()
             kp = PyKeePass(KDBX_PATH, password=MASTER_PASSWORD)
-            results = [e for e in kp.entries if e.title and term in e.title.lower()]
+            results = []
+            for e in kp.entries:
+                fields = [e.title, e.username, e.notes]
+                for field in fields:
+                    if field and term in field.lower():
+                        results.append(e)
+                        break
 
             if not results:
                 update.message.reply_text("Ничего не найдено для удаления.")
