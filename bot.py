@@ -177,7 +177,7 @@ def handle_text(update: Update, context: CallbackContext):
             if not results:
                 update.message.reply_text("Ничего не найдено для удаления.")
             else:
-                keyboard = [[InlineKeyboardButton(e.title, callback_data=f"delete:{i}")] for i, e in enumerate(results)]
+                keyboard = [[InlineKeyboardButton(e.title or f"Без названия #{i+1}", callback_data=f"delete:{i}")] for i, e in enumerate(results)]
                 context.user_data['delete_candidates'] = results
                 update.message.reply_text(
                     f"🗑️ Найдено {len(results)} записей. Выберите запись для удаления:",
@@ -203,7 +203,7 @@ def handle_text(update: Update, context: CallbackContext):
             if not results:
                 update.message.reply_text("Ничего не найдено.")
             else:
-                keyboard = [[InlineKeyboardButton(e.title, callback_data=f"entry:{i}")] for i, e in enumerate(results)]
+                keyboard = [[InlineKeyboardButton(e.title or f"Без названия #{i+1}", callback_data=f"entry:{i}")] for i, e in enumerate(results)]
                 context.user_data['search_results'] = results
                 update.message.reply_text(
                     f"🔎 Найдено {len(results)} записей:",
